@@ -1,53 +1,100 @@
-﻿import tkinter as tk
-from tkinter import ttk
-import requests
-from bs4 import BeautifulSoup
+import sys
+from PyQt5.QtCore import Qt, QUrl
+from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton, QLabel, QSizePolicy, QLineEdit, QMessageBox
+from PyQt5.QtWebEngineWidgets import QWebEngineView
+from PyQt5.QtGui import QIcon
+from google_auth_oauthlib.flow import InstalledAppFlow
 
-# Funkcja do pobierania opowiadania o SCP
-def get_scp_story(scp_number_or_url):
-    if scp_number_or_url.startswith("http"):
-        url = scp_number_or_url
-    else:
-        url = f"http://scp-pl.wikidot.com/scp-{scp_number_or_url}"
+class SCPFoundationApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
 
-    response = requests.get(url)
-    if response.status_code == 200:
-        soup = BeautifulSoup(response.text, 'html.parser')
-        story = soup.find('div', {'id': 'page-content'}).get_text()
-        return story
-    else:
-        return "Nie udało się pobrać opowiadania."
+        # Ustawienia głównego okna
+        self.setWindowTitle("SCP Foundation Wiki App")
+        self.setGeometry(100, 100, 810, 600)
 
-# Funkcja do wyświetlania opowiadania w polu tekstowym
-def display_story():
-    scp_input = scp_entry.get()
-    story = get_scp_story(scp_input)
-    text_widget.delete('1.0', tk.END)  # Wyczyść tekst w polu tekstowym
-    text_widget.insert(tk.END, story)
+        # Ustawienia ikony programu
+        self.setWindowIcon(QIcon('scp_logo.png'))
 
-# Tworzenie głównego okna
-root = tk.Tk()
-root.title('Wikipedia SCP')
-root.geometry('800x600')
+        # Przycisk "Pokaż Opowiadanie"
+        self.show_story_button = QPushButton("Pokaż Opowiadanie", self)
+        self.show_story_button.clicked.connect(self.load_story)
 
-# Ramka z polem do wprowadzania numeru SCP lub linku
-input_frame = ttk.Frame(root)
-input_frame.pack(pady=20)
+        # Pole tekstowe na numer SCP lub link
+        self.scp_entry = QLineEdit(self)
+        self.scp_entry.setPlaceholderText("Podaj numer SCP lub link (opcjonalne)")
 
-label = ttk.Label(input_frame, text="Wybierz numer SCP lub wklej link:")
-label.pack(side=tk.LEFT, padx=10)
-scp_entry = ttk.Entry(input_frame, width=30)
-scp_entry.pack(side=tk.LEFT)
+        # Przycisk "Zaloguj"
+        self.login_button = QPushButton("Zaloguj", self)
+        self.login_button.clicked.connect(self.login_with_google)
 
-display_button = ttk.Button(input_frame, text="Pokaż Opowiadanie", command=display_story)
-display_button.pack(side=tk.LEFT, padx=10)
+        # Labelka z informacją o logowaniu
+        self.login_status_label = QLabel("", self)
+        self.login_status_label.setAlignment(Qt.AlignCenter)
 
-# Ramka na wyświetlanie opowiadania
-text_frame = ttk.Frame(root)
-text_frame.pack(fill=tk.BOTH, expand=True)
+        # Układ głównego okna
+        layout = QVBoxLayout()
+        layout.addWidget(self.show_story_button)
+        layout.addWidget(self.scp_entry)
+        layout.addWidget(self.login_button)
+        layout.addWidget(self.login_status_label)
 
-# Pole tekstowe
-text_widget = tk.Text(text_frame)
-text_widget.pack(fill=tk.BOTH, expand=True)
+        central_widget = QWidget()
+        central_widget.setLayout(layout)
+        self.setCentralWidget(central_widget)
 
-root.mainloop()
+        # Początkowy URL
+        self.current_url = "http://scp-pl.wikidot.com/"
+        self.web_view = QWebEngineView(self)
+        self.web_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.web_view.setStyleSheet("margin: 2px;")  # Dodaj marginesy
+
+        # Układ do wyświetlania przeglądarki
+        web_layout = QVBoxLayout()
+        web_layout.addWidget(self.web_view)
+        layout.addLayout(web_layout)
+        self.web_view.setUrl(QUrl(self.current_url))
+
+        # Zmienna do śledzenia stanu logowania
+        self.logged_in = False
+
+        # Tworzenie przepływu autoryzacji
+        self.flow = InstalledAppFlow.from_client_secrets_file(
+        "C:\\Users\\kosie\\Downloads\\client_secret_810927591405-u5281humn84bg2dn20j56u41a2d3v33g.apps.googleusercontent.com.json",
+        ['https://www.googleapis.com/auth/plus.login'],
+        redirect_uri="http://scp-pl.wikidot.com/search")  # To URI przekierowania musi być takie samo, jak w Konsoli Google Cloud
+
+
+        # Poświadczenia
+        self.credentials = None
+
+    def load_story(self):
+        if self.logged_in:
+            scp_input = self.scp_entry.text().strip()
+            if scp_input.startswith("http"):
+                self.current_url = scp_input
+            elif scp_input:
+                self.current_url = f"http://scp-pl.wikidot.com/scp-{scp_input}"
+            else:
+                self.current_url = "http://scp-pl.wikidot.com/"
+
+            self.web_view.setUrl(QUrl(self.current_url))
+        else:
+            QMessageBox.warning(self, "Brak autoryzacji", "Proszę się zalogować przed korzystaniem z aplikacji.")
+
+    def login_with_google(self):
+        # Uruchamianie przepływu autoryzacji
+        creds = self.flow.run_local_server(port=0)
+        # Ustawienie poświadczeń
+        self.credentials = creds
+
+        # Po autoryzacji zapisz stan zalogowanego użytkownika
+        self.logged_in = True
+        self.login_status_label.setText("Zalogowano pomyślnie przez Google.")
+        self.login_status_label.setStyleSheet("color: green")
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    scp_app = SCPFoundationApp()
+    scp_app.show()
+    sys.exit(app.exec_())
